@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
+/// <summary>
+/// 自定义渲染管线类
+/// </summary>
 public class CustomRenderPipeline : RenderPipeline
 {
     private CameraRenderer render = new CameraRenderer();
@@ -10,11 +13,16 @@ public class CustomRenderPipeline : RenderPipeline
     
     public CustomRenderPipeline(bool useDynamicBatching, bool useGPUInstancing,bool useSRPBatcher)
     {
+        //设置合批启用状态
         this.useDynamicBatching = useDynamicBatching;
         this.useGPUInstancing = useGPUInstancing;
         
         //启用 SRP Batcher
         GraphicsSettings.useScriptableRenderPipelineBatching = useSRPBatcher;
+        
+        //true:visibleLight.finalColor = 光强度乘以线性空间颜色值
+        //false:光强度乘以gamma空间颜色值
+        GraphicsSettings.lightsUseLinearIntensity = true;
     }
     
     /// <summary>

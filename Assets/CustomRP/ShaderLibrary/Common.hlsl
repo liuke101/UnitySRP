@@ -2,6 +2,7 @@
 #ifndef CUSTOM_COMMON_INCLUDED
 #define CUSTOM_COMMON_INCLUDED
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/CommonMaterial.hlsl"
 #include "UnityInput.hlsl"
 
 //定义一些宏取代常用的转换矩阵
@@ -13,12 +14,15 @@
 #define UNITY_PREV_MATRIX_M unity_ObjectToWorld_prev
 #define UNITY_PREV_MATRIX_I_M unity_WorldToObject_prev
 
-
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/UnityInstancing.hlsl"
 
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl"
 
-
+//获取值的平方
+float Square (float v)
+{
+    return v * v;
+}
 
 
 

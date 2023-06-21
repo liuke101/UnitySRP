@@ -23,9 +23,13 @@ public partial class CameraRenderer
     //存储相机剔除后的所有视野内可见物体的数据信息
     CullingResults cullingResults;
 
-    //获取 Pass 名字为 SRPDefaultUnlit 的着色器标识 ID
+    //着色器标记 ID 用于引用着色器中的各种名称。
+    
+    //获取 Pass 中名字为 SRPDefaultUnlit 的着色器标签ID(对应Tags里的属性)
     static ShaderTagId unlitShaderTagId = new ShaderTagId("SRPDefaultUnlit");
-
+    //获取 Pass 中名字为 CustomLit 的着色器标签
+    static ShaderTagId litShaderTagId = new ShaderTagId("CustomLit");
+    
     //绘制SRP不支持的着色器类型
     partial void DrawUnsupportedShaders();
 
@@ -38,6 +42,8 @@ public partial class CameraRenderer
     //设置命令缓冲区的名字
     partial void PrepareBuffer();
 
+    //设置灯光
+    Lighting lighting = new Lighting();
 /*******************************************************************************/
 
     /// <summary>
@@ -62,6 +68,8 @@ public partial class CameraRenderer
 
         Setup();
 
+        lighting.Setup(context,cullingResults);
+        
         DrawVisibleGeometry(useDynamicBatching, useGPUInstancing);
 
         DrawUnsupportedShaders();
@@ -110,6 +118,8 @@ public partial class CameraRenderer
             enableDynamicBatching = useDynamicBatching,
             enableInstancing = useGPUInstancing
         };
+        //渲染CustomLit表示的pass块
+        drawingSettings.SetShaderPassName(1, litShaderTagId);
 
         //过滤设置：设置哪些类型的渲染队列可以被绘制
         var fileteringSettings = new FilteringSettings(RenderQueueRange.opaque); //只绘制RenderQueue为opaque的不透明物体
@@ -118,7 +128,6 @@ public partial class CameraRenderer
         context.DrawRenderers(cullingResults, ref drawingSettings, ref fileteringSettings);
 
         //2.绘制天空盒
-        //绘制天空盒
         context.DrawSkybox(camera);
 
         //3.绘制透明物体
