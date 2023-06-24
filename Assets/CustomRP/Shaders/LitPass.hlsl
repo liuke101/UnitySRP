@@ -2,6 +2,7 @@
 #define CUSTOM_LIT_PASS_INCLUDED
 #include "../ShaderLibrary/Common.hlsl"
 #include "../ShaderLibrary/Surface.hlsl"
+#include "../ShaderLibrary/Shadows.hlsl"
 #include "../ShaderLibrary/Light.hlsl"
 #include "../ShaderLibrary/BRDF.hlsl"
 #include "../ShaderLibrary/Lighting.hlsl"
@@ -12,7 +13,7 @@ TEXTURE2D(_BaseMap);
 SAMPLER(sampler_BaseMap);
 
 /*******************************************************************************/
-//【常量缓冲区】
+//【常量缓冲区】（对应shaderlab中的Properties）
 /*
 //材质的所有属性都需要在常量缓冲区里定义
 //CBUFFER_START 和 CBUFFER_END 宏来替代 CBUFFER 块，这样的话不支持常量缓冲区的平台就会忽略掉 CBUFFER 的代码。
@@ -29,7 +30,7 @@ UNITY_DEFINE_INSTANCED_PROP(float4, _BaseMap_ST)
 UNITY_DEFINE_INSTANCED_PROP(float4, _BaseColor)
 UNITY_DEFINE_INSTANCED_PROP(float, _Cutoff)
 UNITY_DEFINE_INSTANCED_PROP(float, _Metallic)
-UNITY_DEFINE_INSTANCED_PROP(float,_Smoothness)
+UNITY_DEFINE_INSTANCED_PROP(float, _Smoothness)
 
 UNITY_INSTANCING_BUFFER_END(UnityPerMaterial)
 
@@ -53,9 +54,9 @@ struct Attributes
 struct Varyings
 {
     float4 positionCS : SV_POSITION;
-    float3 positionWS : VAR_POSITION_WS;
+    float3 positionWS : VAR_POSITION;
     float2 baseUV : VAR_BASE_UV;
-    float3 normalWS : VAR_NORMAL_WS;
+    float3 normalWS : VAR_NORMAL;
     UNITY_VERTEX_INPUT_INSTANCE_ID
 };
 
@@ -92,25 +93,30 @@ float4 LitPassFragment(Varyings input) : SV_TARGET
 
     float4 base = baseMap * baseColor;
     
-    // 透明度测试
+    //透明度测试
     #if defined(_CLIPPING)
     clip(base.a - UNITY_ACCESS_INSTANCED_PROP(UnityPerMaterial, _Cutoff)); 
     #endif
     
     //定义一个Surface并填充属性
     Surface surface;
+    surface.position = input.positionWS;
     surface.normal = normalize(input.normalWS);
     surface.color = base.rgb;
     surface.alpha = base.a;
     surface.metallic = UNITY_ACCESS_INSTANCED_PROP(UnityPerMaterial, _Metallic);
     surface.smoothness = UNITY_ACCESS_INSTANCED_PROP(UnityPerMaterial, _Smoothness);
-    surface.viewDirection = normalize(input.positionWS - _WorldSpaceCameraPos);
+    surface.viewDirection = normalize(_WorldSpaceCameraPos - input.positionWS);
     
+    //透明度预乘
+    #if defined(_PREMULTIPLY_ALPHA)
     //获取BRDF数据
-    BRDF brdf = GetBRDF(surface);
-
+        BRDF brdf = GetBRDF(surface,true);
+    #else
+        BRDF brdf = GetBRDF(surface);
+    #endif
     //计算最终颜色
-    float3 finalcolor = GetLigting(surface, brdf);
+        float3 finalcolor = GetLigting(surface, brdf);
     
     return float4(finalcolor,surface.alpha);
 }

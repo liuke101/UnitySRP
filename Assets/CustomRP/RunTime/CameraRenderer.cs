@@ -51,7 +51,7 @@ public partial class CameraRenderer
     /// </summary>
     /// <param name="context"></param>
     /// <param name="camera"></param>
-    public void Render(ScriptableRenderContext context, Camera camera,bool useDynamicBatching, bool useGPUInstancing)
+    public void Render(ScriptableRenderContext context, Camera camera,bool useDynamicBatching, bool useGPUInstancing,ShadowSettings shadowSettings)
     {
         this.context = context;
         this.camera = camera;
@@ -61,22 +61,35 @@ public partial class CameraRenderer
         //此操作可能会给 Scene 场景中添加一些几何体，所以我们在 Render() 方法中进行几何体剔除之前调用这个方法。
         PrepareForSceneWindow();
 
-        if (!Cull())
+        //剔除
+        if (!Cull(shadowSettings.maxDistance))
         {
             return;
         }
-
-        Setup();
-
-        lighting.Setup(context,cullingResults);
         
+        buffer.BeginSample(SampleName); 
+        ExecuteBuffer();
+        //光源数据发送到GPU计算光照 + 渲染阴影
+        lighting.Setup(context, cullingResults, shadowSettings);
+        buffer.EndSample(SampleName);
+        
+        //渲染场景开始前的设置
+        Setup(); //设置结束后进行buffer.BeginSample(SampleName)
+        
+        //绘制可见几何体
         DrawVisibleGeometry(useDynamicBatching, useGPUInstancing);
 
+        //绘制SRP不支持的着色器类型
         DrawUnsupportedShaders();
 
+        //绘制Gizmos
         DrawGizmos();
-
-        Submit();
+        
+        //释放ShadowMap RT内存
+        lighting.Cleanup();
+        
+        //提交缓冲区渲染命令
+        Submit(); //提交前进行buffer.EndSample(SampleName)
     }
 
 /*******************************************************************************/
@@ -85,11 +98,13 @@ public partial class CameraRenderer
     /// 剔除相机视野外的物体
     /// </summary>
     /// <returns></returns>
-    bool Cull()
+    bool Cull(float maxShadowDistance)
     {
-        ScriptableCullingParameters p;
-        if (camera.TryGetCullingParameters(out p)) //得到需要进行剔除检查的所有物体
+        if (camera.TryGetCullingParameters(out ScriptableCullingParameters p)) //得到需要进行剔除检查的所有物体
         {
+            //得到最大阴影距离，和相机远截面做比较，取最小的那个作为阴影距离
+            p.shadowDistance = Mathf.Min(maxShadowDistance, camera.farClipPlane);
+            
             cullingResults = context.Cull(ref p); //存储剔除后的结果数据
             return true;
         }
@@ -141,12 +156,13 @@ public partial class CameraRenderer
 /*******************************************************************************/
 
     /// <summary>
-    /// 渲染开始前的设置
+    /// 渲染场景开始前的设置
     /// 设置相机的属性和矩阵
     /// </summary>
     void Setup()
     {
-        context.SetupCameraProperties(camera); //设置相机特定的全局ShaderProperties
+        //设置相机特定的全局ShaderProperties
+        context.SetupCameraProperties(camera); 
 
         //得到相机的清除标志Clear Flags 
         //这是一个枚举值，从小到大分别是 Skybox，Color(Solid Color)，Depth 和 Nothing
@@ -156,12 +172,10 @@ public partial class CameraRenderer
         buffer.ClearRenderTarget(
             flags <= CameraClearFlags.Depth, //当相机的Clear Flags 设置为前三个枚举时，都会清除深度缓冲区
             flags == CameraClearFlags.SolidColor, //当相机的Clear Flags 设置为 Solid Color 时才清除颜色缓冲
-            flags == CameraClearFlags.Color
-                ? camera.backgroundColor.linear
-                : Color.clear //清除缓冲区的颜色值，如果我们设置的 Clear Flags 是 Color，那么需要使用相机的 Background 属性的颜色值，由于我们使用的是线性色彩空间，颜色值进行一下转换，其它的 Clear Flags 还默认使用 Color.clear（黑色）即可
+            flags == CameraClearFlags.Color ? camera.backgroundColor.linear : Color.clear //清除缓冲区的颜色值，如果我们设置的 Clear Flags 是 Color，那么需要使用相机的 Background 属性的颜色值，由于我们使用的是线性色彩空间，颜色值进行一下转换，其它的 Clear Flags 还默认使用 Color.clear（黑色）即可
         );
-
-        buffer.BeginSample(SampleName); //开始采样，放在渲染过程的开始
+        
+        buffer.BeginSample(SampleName);
         ExecuteBuffer();
     }
 
@@ -172,9 +186,10 @@ public partial class CameraRenderer
     /// </summary>
     void Submit()
     {
-        buffer.EndSample(SampleName); //结束采样，放在渲染过程的结束
+        //结束采样，放在渲染过程的结束
+        buffer.EndSample(SampleName); 
         ExecuteBuffer();
-
+        
         //通过 context 发送的渲染命令都是缓冲的，最后需要通过调用 Submit() 方法来正式提交渲染命令
         context.Submit();
     }

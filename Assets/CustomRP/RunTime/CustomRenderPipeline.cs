@@ -10,12 +10,16 @@ public class CustomRenderPipeline : RenderPipeline
 {
     private CameraRenderer render = new CameraRenderer();
     private bool useDynamicBatching, useGPUInstancing;
+    private ShadowSettings shadowSettings;
     
-    public CustomRenderPipeline(bool useDynamicBatching, bool useGPUInstancing,bool useSRPBatcher)
+    public CustomRenderPipeline(bool useDynamicBatching, bool useGPUInstancing,bool useSRPBatcher,ShadowSettings shadowSettings)
     {
         //设置合批启用状态
         this.useDynamicBatching = useDynamicBatching;
         this.useGPUInstancing = useGPUInstancing;
+        
+        //阴影设置
+        this.shadowSettings = shadowSettings;
         
         //启用 SRP Batcher
         GraphicsSettings.useScriptableRenderPipelineBatching = useSRPBatcher;
@@ -35,7 +39,7 @@ public class CustomRenderPipeline : RenderPipeline
         //遍历所有相机进行单独渲染,这样设计可以让每个相机使用不同的渲染方式绘制画面
         foreach (Camera camera in cameras)
         {
-            render.Render(context, camera,useDynamicBatching, useGPUInstancing);
+            render.Render(context, camera,useDynamicBatching, useGPUInstancing, shadowSettings);
         }
     }
     

@@ -14,10 +14,12 @@ public class CustomRenderPineAsset : RenderPipelineAsset
     [SerializeField] private bool useGPUInstancing = true;
     [SerializeField] private bool userSRPBatcher = true;
     
+    //阴影设置
+    [SerializeField] private ShadowSettings shadows = default;
     
     //重写抽象方法，需要返回一个RenderPipeline实例对象
     protected override RenderPipeline CreatePipeline()
     {
-        return new CustomRenderPipeline(useDynamicBatching, useGPUInstancing, userSRPBatcher);
+        return new CustomRenderPipeline(useDynamicBatching, useGPUInstancing, userSRPBatcher,shadows);
     }
 }

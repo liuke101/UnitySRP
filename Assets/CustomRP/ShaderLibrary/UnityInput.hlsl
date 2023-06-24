@@ -1,5 +1,4 @@
 //unity标准输入库
-#include <HLSLSupport.cginc>
 #ifndef CUSTOM_UNITY_INPUT_INCLUDED
 #define CUSTOM_UNITY_INPUT_INCLUDED
 
