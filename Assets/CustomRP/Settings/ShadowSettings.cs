@@ -1,13 +1,18 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 [System.Serializable]
 public class ShadowSettings 
 {
    //阴影最大距离
-   [Min(0.0f)]
+   [Min(0.0f)] 
    public float maxDistance = 100.0f;
+   
+   //阴影衰减距离
+   [Range(0.001f, 1.0f)] 
+   public float distanceFade = 0.1f;
    
    //ShadowMap大小
    public enum TextureSize
@@ -37,6 +42,16 @@ public class ShadowSettings
       
       //在ComputeDirectionalShadowMatricesAndCullingPrimitives方法中使用
       public Vector3 CascadeRatios => new Vector3(cascadeRatio1,cascadeRatio2,cascadeRatio3);
+      
+      //级联阴影衰减值
+      [Range(0.001f,1.0f)]
+      public float cascadeFade;
+
+      //滤波模式
+      public FilterMode filter;
+      
+      //级联混合模式
+      public CascadeBlendMode cascadeBlendMode;
    }
    
    //默认尺寸为1024
@@ -46,10 +61,28 @@ public class ShadowSettings
       cascadeCount = 4,
       cascadeRatio1 = 0.1f,
       cascadeRatio2 = 0.25f,
-      cascadeRatio3 = 0.5f
-      
+      cascadeRatio3 = 0.5f,
+      cascadeFade = 0.1f,
+      cascadeBlendMode = CascadeBlendMode.Hard,
+      filter = FilterMode.PCF2x2
    };
    
+   //PCF滤波模式
+   public enum FilterMode
+   {
+      PCF2x2,
+      PCF3x3,
+      PCF5x5,
+      PCF7x7
+   }
+
+   //级联混合模式
+   public enum CascadeBlendMode
+   {
+      Hard,
+      Soft, 
+      Dither
+   }
    
    
 }

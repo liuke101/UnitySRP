@@ -53,6 +53,33 @@ Shader "CustomRP/Unlit"
             #include "UnlitPass.hlsl"
             ENDHLSL
         }
+        
+        Pass
+        {
+            Tags
+            {
+                "LightMode" = "ShadowCaster" //该LightMode将物体的深度渲染到阴影贴图或者深度贴图中
+            }
+            
+            ColorMask 0 //关闭颜色写入
+            
+            HLSLPROGRAM
+
+            //着色器编译目标级别设置为 3.5
+            #pragma target 3.5
+
+            //是否开启GPU实例化
+            #pragma multi_compile_instancing
+
+            //Shader Feature
+            #pragma shader_feature _ _SHADOWS_CLIP _SHADOWS_DITHER
+            
+            #pragma vertex ShadowCasterPassVertex
+            #pragma fragment ShadowCasterPassFragment
+            
+            #include "ShadowCasterPass.hlsl"
+            ENDHLSL
+        }
     }
     CustomEditor "CustomShaderGUI"
 }

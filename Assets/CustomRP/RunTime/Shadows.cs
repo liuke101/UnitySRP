@@ -27,6 +27,8 @@ public class Shadows
     struct ShadowedDirectionalLight
     {
         public int visibleLightIndex;  //产生阴影的可见光索引
+        public float slopeScaleBias;   //斜度比例偏移
+        public float nearPlaneOffset; //阴影视椎体近裁剪平面偏移
     }
     
     //存储所有能产生阴影的定向光索引
@@ -41,12 +43,43 @@ public class Shadows
     //最大级联数量
     const int maxCascades = 4;
     
+    //级联数据
+    static int cascadeDataId = Shader.PropertyToID("_CascadeData");
+    static Vector4[] cascadeData = new Vector4[maxCascades];
+    
+    //级联数量 Properties ID
+    static int cascadeCountId = Shader.PropertyToID("_CascadeCount");
+    
+    //级联包围球 Properties ID
+    static int cascadeCullingSpheresId = Shader.PropertyToID("_CascadeCullingSpheres");
+    
+    //级联混合模式 Properties ID
+    static string[] cascadeBlendKeywords = {"_CASCADE_BLEND_SOFT","_CASCADE_BLEND_DITHER"};
+    
+    //存储级联包围球数据，XYZ分量存储包围球的位置，W分量存储球体半径
+    static Vector4[] cascadeCullingSpheres = new Vector4[maxCascades];
+    
+    //阴影衰减距离 Properties ID
+    static int shadowDistanceFadeId = Shader.PropertyToID("_ShadowDistanceFade");
+    
     //阴影转换矩阵:世界空间到阴影图块裁剪空间的转换矩阵
     static int dirShadowMatricesId = Shader.PropertyToID("_DirectionalShadowMatrices");
     
     //存储阴影转换矩阵
-    static Matrix4x4[] dirShadowMatrices = new Matrix4x4[maxShadowedDirectionalLightCount * maxCascades];
+    private static Matrix4x4[] dirShadowMatrices = new Matrix4x4[maxShadowedDirectionalLightCount * maxCascades];
     
+    /*******************************************************************************/
+    
+    //PCF滤波模式  
+    static string[] directionalFilterKeywords =   
+    {  
+        "_DIRECTIONAL_PCF3",  
+        "_DIRECTIONAL_PCF5",  
+        "_DIRECTIONAL_PCF7",  
+    };  
+    
+    //阴影的图集大小 Properties ID
+    static int shadowAtlasSizeId = Shader.PropertyToID("_ShadowAtlasSize");  
     
     /*******************************************************************************/
     
@@ -73,7 +106,7 @@ public class Shadows
     /// </summary>
     /// <param name="light"></param>
     /// <param name="visibleLightIndex"></param>
-    public Vector2 ReserveDirectionalShadows(Light light,int visibleLightIndex)
+    public Vector3 ReserveDirectionalShadows(Light light,int visibleLightIndex)
     {
         //存储可见光源的索引
         //前提
@@ -83,13 +116,19 @@ public class Shadows
            light.shadows!=LightShadows.None&&light.shadowStrength>0.0f&&
            cullingResults.GetShadowCasterBounds(visibleLightIndex,out Bounds b))
         {
+            //创建 ShadowedDirectionalLight 实例
             shadowedDirctionalLights[ShadowedDirectionalLightCount] = new ShadowedDirectionalLight
             {
-                visibleLightIndex = visibleLightIndex
+                visibleLightIndex = visibleLightIndex,
+                slopeScaleBias = light.shadowBias,
+                nearPlaneOffset = light.shadowNearPlane
             };
             
-            //返回阴影强度和阴影图块的偏移
-            return new Vector2(light.shadowStrength,settings.directional.cascadeCount * ShadowedDirectionalLightCount++);
+            //返回阴影强度\阴影图块的偏移\法线偏移
+            return new Vector3(
+                light.shadowStrength,
+                settings.directional.cascadeCount * ShadowedDirectionalLightCount++,
+                light.shadowNormalBias);
         }
         
         //如果光源没有阴影则返回零向量
@@ -109,6 +148,7 @@ public class Shadows
     }
 
     /*******************************************************************************/
+    
     /// <summary>
     /// 渲染所有定向光阴影
     /// </summary>
@@ -141,9 +181,29 @@ public class Shadows
             RenderDirectionalShadows(i, split, tileSize);
         }
         
-        //将转换矩阵发送到 GPU
-        buffer.SetGlobalMatrixArray(dirShadowMatricesId,dirShadowMatrices);
+        //级联数据发送GPU
+        buffer.SetGlobalVectorArray(cascadeDataId,cascadeData);
+        
+        //将级联数量和包围球数据发送到GPU
+        buffer.SetGlobalInt(cascadeCountId, settings.directional.cascadeCount);
+        buffer.SetGlobalVectorArray(cascadeCullingSpheresId, cascadeCullingSpheres);
+        
+        //阴影转换矩阵传入GPU
+        buffer.SetGlobalMatrixArray(dirShadowMatricesId, dirShadowMatrices);
 
+        //把阴影最大距离和阴影衰减距离的倒数传递给 GPU
+        float f = 1.0f - settings.directional.cascadeFade;
+        buffer.SetGlobalVector(shadowDistanceFadeId,new Vector4(1.0f / settings.maxDistance, 1.0f / settings.distanceFade,1.0f / (1.0f - f * f)));
+        
+        //设置PCF滤波模式
+        SetKeywords(directionalFilterKeywords,(int)settings.directional.filter - 1);
+        
+        //设置级联混合模式
+        SetKeywords(cascadeBlendKeywords,(int)settings.directional.cascadeBlendMode - 1);
+        
+        //传递图集大小和纹素大小  
+        buffer.SetGlobalVector( shadowAtlasSizeId, new Vector4(atlasSize, 1f / atlasSize));
+        
         buffer.EndSample(bufferName);
         ExecuteBuffer();
     }
@@ -177,6 +237,9 @@ public class Shadows
         int tileOffset = index * cascadeCount;
         Vector3 ratios = settings.directional.CascadeRatios;
 
+        //剔除偏差
+        float cullingFactor = Mathf.Max(0f, 0.8f - settings.directional.cascadeFade);
+        
         for (int i = 0; i < cascadeCount; i++)
         {
             //定向光没有一个真实位置，我们要找出与光的方向匹配的视图和投影矩阵
@@ -188,11 +251,20 @@ public class Shadows
                 cascadeCount, //设置阴影级联数据
                 ratios, //设置阴影级联数据
                 tileSize, //ShadowMap尺寸
-                0.1f, //阴影近平面偏移
+                light.nearPlaneOffset, //阴影近平面偏移
                 out Matrix4x4 viewMatrix, //光源的观察矩阵
                 out Matrix4x4 projectionMatrix, //光源的投影矩阵
                 out ShadowSplitData splitData); //ShadowSplitData 对象，包含了如何剔除投影对象的信息
-
+            
+            //我们让所有的光源都使用相同的级联，所以只需要拿到第一个定向光的包围球数据即可
+            if (index == 0)
+            {
+                SetCascadeData(i, splitData.cullingSphere, tileSize);
+            }
+            
+            //剔除偏差
+            splitData.shadowCascadeBlendCullingFactor = cullingFactor;
+            
             //设置ShadowSplitData
             shadowSettings.splitData = splitData;
             
@@ -211,14 +283,47 @@ public class Shadows
 
             //设置视图和投影矩阵
             buffer.SetViewProjectionMatrices(viewMatrix, projectionMatrix);
+            
+            //绘制阴影前，设置斜度比例偏差值
+            buffer.SetGlobalDepthBias(0, light.slopeScaleBias);
             ExecuteBuffer();
-
+            
             //绘制阴影
             //注意：DrawShadows 方法只渲染 Shader 中带有 ShadowCaster Pass 通道的物体
             context.DrawShadows(ref shadowSettings);
+            
+            //绘制阴影后全局深度偏差归零
+            buffer.SetGlobalDepthBias(0f, 0f);
         }
     }
+
+    /*******************************************************************************/
     
+    /// <summary>
+    /// 设置级联数据
+    /// </summary>
+    /// <param name="index"></param>
+    /// <param name="cullingSphere"></param>
+    /// <param name="tileSize"></param>
+    private void SetCascadeData(int index, Vector4 cullingSphere, float tileSize)
+    {
+        //包围球直径除以阴影图块尺寸=纹素大小
+        float texelSize = 2f * cullingSphere.w / tileSize;
+        
+        //增加PCF滤波的样本区域意味着最终在最后一个级联的包围球范围之外也有可能进行采样
+        //要在计算包围球半径的平方之前，使用包围球半径减去经过调整后的纹素大小（偏差大小）来避免这种情况。**
+        float filterSize = texelSize * ((float)settings.directional.filter + 1f);
+        cullingSphere.w -= filterSize;
+        
+        //在Shadows.hlsl中判断物体表面的片元是否在包围球中，可以通过该片元到球心距离的平方和球体半径的平方来比较
+        //传递数据之前先计算好球体半径的平方，就不用再在着色器中计算了
+        cullingSphere.w *= cullingSphere.w; //*=得到半径的平方值
+        cascadeCullingSpheres[index] = cullingSphere;
+        
+        //纹素是正方形，最坏的情况是不得不沿着正方形的对角线偏移，所以将纹素大小乘以根号2进行缩放
+        cascadeData[index] = new Vector4(1.0f / cullingSphere.w, texelSize * 1.4142136f);
+    }
+
     /*******************************************************************************/
 
     /// <summary>
@@ -277,7 +382,23 @@ public class Shadows
     
     /*******************************************************************************/
     
-    
+    /// <summary>
+    /// 设置关键字
+    /// </summary>
+    void SetKeywords(string[] keywords, int enabledIndex)
+    {
+        for (int i = 0; i < keywords.Length; i++)
+        {
+            if (i == enabledIndex)
+            {
+                buffer.EnableShaderKeyword(keywords[i]);
+            }
+            else
+            {
+                buffer.DisableShaderKeyword(keywords[i]);
+            }
+        }
+    }
     /*******************************************************************************/
     
     /// <summary>
