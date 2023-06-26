@@ -2,8 +2,15 @@ Shader "CustomRP/lit"
 {
     Properties
     {
+        [HideInInspector] _MainTex("Texture for Lightmap", 2D) = "white" {}  
+        [HideInInspector] _Color("Color for Lightmap", Color) =(0.5, 0.5, 0.5, 1.0)
+        
         _BaseColor("基本颜色", Color) =(0.5, 0.5, 0.5, 1.0)
         _BaseMap("基本纹理", 2D) = "white" {}
+        
+        [NoScaleOffset] _EmissionMap("自发光纹理", 2D) = "white" {}  
+        [HDR] _EmissionColor("自发光颜色", Color) =(0.0, 0.0, 0.0, 0.0)
+        
         _Metallic("金属度", Range(0,1)) = 0.0
         _Smoothness("光滑度", Range(0,1)) = 0.5
         
@@ -34,9 +41,17 @@ Shader "CustomRP/lit"
         
         //是否接受阴影
         [Toggle(_RECEIVE_SHADOWS)] _ReceiveShadows ("接受阴影", Float) = 1
+        
+        
     }
     SubShader
     {
+        //指令放到所有 Pass 的外面
+        HLSLINCLUDE
+        #include "../ShaderLibrary/Common.hlsl"  
+        #include "LitInput.hlsl" 
+        ENDHLSL 
+        
         Tags
         {
             "Queue"="Transparent"
@@ -65,9 +80,18 @@ Shader "CustomRP/lit"
 
             //级联混合模式
             #pragma multi_compile _ _CASCADE_BLEND_SOFT _CASCADE_BLEND_DITHER
+
+            //是否渲染光照贴图对象
+            #pragma multi_compile _ LIGHTMAP_ON
             
             //是否开启GPU实例化
             #pragma multi_compile_instancing
+
+            //阴影遮罩
+            #pragma multi_compile _ _SHADOW_MASK_ALWAYS _SHADOW_MASK_DISTANCE
+            #pragma multi_compile _ LIGHTMAP_ON
+            
+
             
             //Shader Feature
             #pragma shader_feature _CLIPPING
@@ -102,8 +126,6 @@ Shader "CustomRP/lit"
             //Shader Feature
             //投影模式
             #pragma shader_feature _ _SHADOWS_CLIP _SHADOWS_DITHER
-
-            
             
             #pragma vertex ShadowCasterPassVertex
             #pragma fragment ShadowCasterPassFragment
@@ -111,6 +133,23 @@ Shader "CustomRP/lit"
             #include "ShadowCasterPass.hlsl"
             ENDHLSL
         }
+        
+        Pass   
+        {  
+            Tags   
+            {  
+                "LightMode" = "Meta"  
+            }  
+           
+            Cull Off  //关闭剔除功能
+           
+            HLSLPROGRAM  
+            #pragma target 3.5  
+            #pragma vertex MetaPassVertex  
+            #pragma fragment MetaPassFragment  
+            #include "MetaPass.hlsl"  
+            ENDHLSL  
+         }
     }
     
     CustomEditor "CustomShaderGUI"

@@ -68,6 +68,16 @@ public class Shadows
     //存储阴影转换矩阵
     private static Matrix4x4[] dirShadowMatrices = new Matrix4x4[maxShadowedDirectionalLightCount * maxCascades];
     
+    //阴影遮罩关键字数组，控制是否使用阴影遮罩
+    static string[] shadowMaskKeywords =   
+    {  
+        "_SHADOW_MASK_ALWAYS",  
+        "_SHADOW_MASK_DISTANCE"  
+    };
+    
+    //是否使用阴影遮罩
+    bool useShadowMask;  
+    
     /*******************************************************************************/
     
     //PCF滤波模式  
@@ -94,8 +104,8 @@ public class Shadows
         this.context = context;
         this.cullingResults = cullingResults;
         this.settings = settings;
-        
         ShadowedDirectionalLightCount = 0;
+        useShadowMask = false; 
     }
     
     /*******************************************************************************/
@@ -106,16 +116,33 @@ public class Shadows
     /// </summary>
     /// <param name="light"></param>
     /// <param name="visibleLightIndex"></param>
-    public Vector3 ReserveDirectionalShadows(Light light,int visibleLightIndex)
+    public Vector4 ReserveDirectionalShadows(Light light,int visibleLightIndex)
     {
         //存储可见光源的索引
         //前提
         //1.光源开启了阴影投射并且阴影强度不能为0
         //2.在阴影最大投射距离内有被该光源影响且需要投影的物体存在，如果没有就不需要渲染该光源的ShadowMap了
         if(ShadowedDirectionalLightCount<maxShadowedDirectionalLightCount&&
-           light.shadows!=LightShadows.None&&light.shadowStrength>0.0f&&
-           cullingResults.GetShadowCasterBounds(visibleLightIndex,out Bounds b))
+           light.shadows!=LightShadows.None&&light.shadowStrength>0.0f)
         {
+            float maskChannel = -1;
+            
+            //获取烘焙数据信息
+            LightBakingOutput lightBaking = light.bakingOutput; 
+            
+            //如果光源的光照贴图的烘焙类型为 Mixed 模式且混合照明模式为 ShadowMask，则说明我们在使用 ShadowMask
+            if (lightBaking.lightmapBakeType == LightmapBakeType.Mixed && lightBaking.mixedLightingMode == MixedLightingMode.Shadowmask)  
+            {  
+                useShadowMask = true;  
+                maskChannel = lightBaking.occlusionMaskChannel; //得到光源的阴影遮罩通道索引
+            }  
+            
+            //确定光源是否使用了阴影遮罩，即使没有阴影投射，也返回光源的阴影强度
+            if (!cullingResults.GetShadowCasterBounds(visibleLightIndex, out Bounds b ))  
+            {  
+                return new Vector3(-light.shadowStrength, 0f, 0f);  
+            }
+            
             //创建 ShadowedDirectionalLight 实例
             shadowedDirctionalLights[ShadowedDirectionalLightCount] = new ShadowedDirectionalLight
             {
@@ -125,14 +152,14 @@ public class Shadows
             };
             
             //返回阴影强度\阴影图块的偏移\法线偏移
-            return new Vector3(
+            return new Vector4(
                 light.shadowStrength,
                 settings.directional.cascadeCount * ShadowedDirectionalLightCount++,
-                light.shadowNormalBias);
+                light.shadowNormalBias,maskChannel);
         }
         
-        //如果光源没有阴影则返回零向量
-        return Vector2.zero;
+        //如果灯光没有使用ShadowMask时，则设置通道索引为-1
+        return new Vector4(0f,0f,0f,-1f);
     }
     /*******************************************************************************/
     
@@ -145,6 +172,12 @@ public class Shadows
         {
             RenderDirectionalShadows();
         }
+        
+        //是否使用阴影遮罩  
+        buffer.BeginSample(bufferName);  
+        SetKeywords(shadowMaskKeywords, useShadowMask ? QualitySettings.shadowmaskMode == ShadowmaskMode.Shadowmask ? 0 : 1 : -1);
+        buffer.EndSample(bufferName);  
+        ExecuteBuffer();  
     }
 
     /*******************************************************************************/
@@ -192,8 +225,8 @@ public class Shadows
         buffer.SetGlobalMatrixArray(dirShadowMatricesId, dirShadowMatrices);
 
         //把阴影最大距离和阴影衰减距离的倒数传递给 GPU
-        float f = 1.0f - settings.directional.cascadeFade;
-        buffer.SetGlobalVector(shadowDistanceFadeId,new Vector4(1.0f / settings.maxDistance, 1.0f / settings.distanceFade,1.0f / (1.0f - f * f)));
+        float f = 1f - settings.directional.cascadeFade;
+        buffer.SetGlobalVector(shadowDistanceFadeId,new Vector4(1f / settings.maxDistance, 1f / settings.distanceFade,1f / (1f - f * f)));
         
         //设置PCF滤波模式
         SetKeywords(directionalFilterKeywords,(int)settings.directional.filter - 1);
@@ -321,7 +354,7 @@ public class Shadows
         cascadeCullingSpheres[index] = cullingSphere;
         
         //纹素是正方形，最坏的情况是不得不沿着正方形的对角线偏移，所以将纹素大小乘以根号2进行缩放
-        cascadeData[index] = new Vector4(1.0f / cullingSphere.w, texelSize * 1.4142136f);
+        cascadeData[index] = new Vector4(1.0f / cullingSphere.w, filterSize * 1.4142136f);
     }
 
     /*******************************************************************************/

@@ -14,6 +14,11 @@
 #define UNITY_PREV_MATRIX_M unity_ObjectToWorld_prev
 #define UNITY_PREV_MATRIX_I_M unity_WorldToObject_prev
 
+//定义SHADOWS_ShadowMask宏时，这样阴影遮罩不会打断GPU Instancing
+#if defined(_SHADOW_MASK_ALWAYS) || defined(_SHADOW_MASK_DISTANCE)  
+   #define SHADOWS_SHADOWMASK  
+#endif
+
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/UnityInstancing.hlsl"
 
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl"

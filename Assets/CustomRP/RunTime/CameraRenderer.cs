@@ -49,8 +49,6 @@ public partial class CameraRenderer
     /// <summary>
     /// 绘制在相机视野内的所有物体
     /// </summary>
-    /// <param name="context"></param>
-    /// <param name="camera"></param>
     public void Render(ScriptableRenderContext context, Camera camera,bool useDynamicBatching, bool useGPUInstancing,ShadowSettings shadowSettings)
     {
         this.context = context;
@@ -131,8 +129,11 @@ public partial class CameraRenderer
         var drawingSettings = new DrawingSettings(unlitShaderTagId, sortingSettings)
         {
             enableDynamicBatching = useDynamicBatching,
-            enableInstancing = useGPUInstancing
+            enableInstancing = useGPUInstancing,
+            perObjectData = PerObjectData.Lightmaps | PerObjectData.ShadowMask | PerObjectData.LightProbe | PerObjectData.OcclusionProbe | PerObjectData.LightProbeProxyVolume | PerObjectData.OcclusionProbeProxyVolume
+            
         };
+        
         //渲染CustomLit表示的pass块
         drawingSettings.SetShaderPassName(1, litShaderTagId);
 

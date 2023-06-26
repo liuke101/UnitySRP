@@ -2,7 +2,7 @@ Shader "CustomRP/Unlit"
 {
     Properties
     {
-        _BaseColor("Color", Color) = (1.0,1.0,1.0,1.0)
+       [HDR] _BaseColor("Color", Color) = (1.0,1.0,1.0,1.0)
         _BaseMap("Texture", 2D) = "white" {}
         
         //透明度测试的阈值
@@ -26,6 +26,12 @@ Shader "CustomRP/Unlit"
     }
     SubShader
     {
+        
+        HLSLINCLUDE  
+        #include "../ShaderLibrary/Common.hlsl"  
+        #include "UnlitInput.hlsl"  
+        ENDHLSL
+        
         Tags
         {
             "Queue"="Transparent"

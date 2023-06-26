@@ -32,7 +32,8 @@ public class CustomShaderGUI : ShaderGUI
         this.editor = materialEditor;
         this.materials = materialEditor.targets;
         this.properties = properties;
-
+        BakedEmission(); 
+        
         EditorGUILayout.Space();
 
         //折叠
@@ -50,6 +51,7 @@ public class CustomShaderGUI : ShaderGUI
         if (EditorGUI.EndChangeCheck())
         {
             SetShadowCasterPass();
+            CopyLightMappingProperties();  
         }
     }
 
@@ -232,6 +234,39 @@ public class CustomShaderGUI : ShaderGUI
         {
             m.SetShaderPassEnabled("ShadowCaster", enabled);
         }
+    }
+    
+    //烘焙自发光
+    void BakedEmission()
+    {
+        EditorGUI.BeginChangeCheck();  
+        editor.LightmapEmissionProperty();  
+        if(EditorGUI.EndChangeCheck())  
+        {  
+            foreach(Material m in editor.targets)  
+            {  
+                m.globalIlluminationFlags &=~MaterialGlobalIlluminationFlags.EmissiveIsBlack;  
+            }  
+        }  
+    }
+    
+    //令_MainTex、_Color的属性值和_BaseMap、_BaseColor` 属性值保持一致，供透明物体烘焙光照贴图时使用
+    void CopyLightMappingProperties()   
+    {  
+        MaterialProperty mainTex = FindProperty("_MainTex", properties, false);  
+        MaterialProperty baseMap = FindProperty("_BaseMap", properties, false);  
+        if(mainTex != null && baseMap != null)   
+        {  
+            mainTex.textureValue = baseMap.textureValue;  
+            mainTex.textureScaleAndOffset = baseMap.textureScaleAndOffset;  
+        }  
+        MaterialProperty color = FindProperty("_Color", properties, false);  
+        MaterialProperty baseColor =  
+            FindProperty("_BaseColor", properties, false);  
+        if(color != null && baseColor != null)   
+        {  
+            color.colorValue = baseColor.colorValue;  
+        }  
     }
 
 }

@@ -2,7 +2,7 @@
 //这里使用和 URP 一样的 BRDF 模型
 #ifndef CUSTOM_BRDF_INCLUDED
 #define CUSTOM_BRDF_INCLUDED
-
+#include "Light.hlsl"
 //电介质的反射率平均约0.04
 #define MIN_REFLECTIVITY 0.04
 
@@ -59,7 +59,7 @@ float SpecularStrength (Surface surface, BRDF brdf, Light light) {
 }
 
 //直接光照的表面颜色
-float DirectBRDF(Surface surface, BRDF brdf, Light light)
+float3 DirectBRDF(Surface surface, BRDF brdf, Light light)
 {
     return SpecularStrength(surface,brdf,light) * brdf.specular + brdf.diffuse;
 }
